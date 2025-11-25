@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@consumet/extensions": "^1.8.6",
     "@vidstack/player": "^1.6.5",
     "@vidstack/react": "^1.12.12",
     "classnames": "^2.5.1",

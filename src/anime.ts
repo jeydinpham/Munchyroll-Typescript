@@ -1,73 +1,89 @@
-const corsLink = process.env.NEXT_PUBLIC_CORS_REQUEST_LINK;
-const apiLink = process.env.NEXT_PUBLIC_CONSUMET_API;
+import { META, ANIME } from "@consumet/extensions";
 
-export const getAnimeData = async (animeId: string, provider: string = "zoro") => {
-  const params = new URLSearchParams({ provider });
-  const data = await fetch(apiLink + `/meta/anilist/data/${animeId}?${params.toString()}`)
-  return await data.json();
+const getParser = (provider: string) => {
+  switch (provider) {
+    case "animekai":
+      return new ANIME.AnimeKai();
+    case "animepahe":
+      return new ANIME.AnimePahe();
+    default:
+      return new ANIME.Hianime();
+  }
 };
 
-export const getAnimeEpisodeData = async (animeId: string, provider: string = "zoro") => {
-  const params = new URLSearchParams({ provider });
-  const data = await fetch(apiLink + `/meta/anilist/episodes/${animeId}?${params.toString()}`)
-  const episodeData = await data.json();
-  if (Object.keys(episodeData).length === 0) {
-    const data = await fetch(apiLink + `/meta/anilist/episodes/${animeId}`)
-    return await data.json();
-  }
-  return episodeData;
-}
+const getAnilist = (provider: string) => {
+  const parser = getParser(provider);
+  return new META.Anilist(parser);
+};
 
-export const getAnimeEpisodeLinks = async (animeId: string, provider: string = "zoro") => {
-  const params = new URLSearchParams({ provider });
-  const data = await fetch(apiLink + `/meta/anilist/watch/${animeId}?${params.toString()}`)
-  return await data.json();
-}
+export const getAnimeData = async (animeId: string, provider: string) => {
+  const anilist = getAnilist(provider);
+  return await anilist.fetchAnimeInfo(animeId);
+};
+
+export const getAnimeEpisodeData = async (animeId: string, provider: string) => {
+  const anilist = getAnilist(provider);
+  const info = await anilist.fetchAnimeInfo(animeId);
+  return info.episodes || [];
+};
+
+export const getAnimeEpisodeLinks = async (episodeId: string, provider: string) => {
+  const anilist = getAnilist(provider);
+  return await anilist.fetchEpisodeSources(episodeId);
+};
 
 export const getAnimeSearch = async (query: string, count: number) => {
-  const params = new URLSearchParams({ page: "1", perPage: count.toString() });
-  const data = await fetch(apiLink + `/meta/anilist/${query}?${params.toString()}`)
-  return await data.json();
-}
+  const anilist = getAnilist("zoro");
+  return await anilist.search(query, 1, count);
+};
 
-export const getTopAnime = async (count: number) => {
-  const params = new URLSearchParams({ sort: '["SCORE_DESC"]', perPage: count.toString() });
-  const data = await fetch(apiLink + `/meta/anilist/advanced-search?${params.toString()}`)
-  const episodeData = await data.json();
-  return episodeData;
-}
-export const getAnimeTrending = async (count: number) => {
-  const params = new URLSearchParams({ page: "1", perPage: count.toString() });
-  const data = await fetch(apiLink + `/meta/anilist/trending?${params.toString()}`)
-  return await data.json();
-}
+export const getTopAnime = async (count: number, provider: string) => {
+  const anilist = getAnilist(provider);
+  const popular = await anilist.fetchPopularAnime(1, count);
+  const sorted = {
+    ...popular,
+    results: [...popular.results].sort((a: any, b: any) => (b.score || 0) - (a.score || 0)),
+  };
+  return sorted;
+};
 
-export const getAnimePopular = async (count: number) => {
-  const params = new URLSearchParams({ sort: '["POPULARITY_DESC"]', perPage: count.toString() });
-  const data = await fetch(apiLink + `/meta/anilist/advanced-search?${params.toString()}`)
-  return await data.json();
-}
+export const getAnimeTrending = async (count: number, provider: string) => {
+  const anilist = getAnilist(provider);
+  return await anilist.fetchTrendingAnime(1, count);
+};
 
-export const getAnimeNew = async (count: number) => {
-  const params = new URLSearchParams({ type: "ANIME", sort: '["POPULARITY_DESC"]', status: "RELEASING", perPage: count.toString() });
-  const data = await fetch(apiLink + `/meta/anilist/advanced-search?${params.toString()}`)
-  return await data.json();
-}
+export const getAnimePopular = async (count: number, provider: string) => {
+  const anilist = getAnilist(provider);
+  return await anilist.fetchPopularAnime(1, count);
+};
+
+export const getAnimeNew = async (count: number, provider: string) => {
+  const anilist = getAnilist(provider);
+  const popular = await anilist.fetchPopularAnime(1, count * 2);
+  const filtered = popular.results.filter((a: any) => a.status === "RELEASING").slice(0, count);
+  return { ...popular, results: filtered };
+};
 
 export const getAnimeGenre = async (genre: string, count: number) => {
-  const params = new URLSearchParams({ sort: '["TRENDING_DESC"]', genres: `["${genre}"]`, page: "1", perPage: count.toString() });
-  const data = await fetch(apiLink + `/meta/anilist/advanced-search?${params.toString()}`)
-  return await data.json();
-}
+  const anilist = getAnilist("zoro");
+  return await anilist.fetchAnimeGenres([genre], 1, count);
+};
 
-export const getUpcomingAnime = async (count: number) => {
-  const params = new URLSearchParams({ sort: '["POPULARITY_DESC"]', status: "NOT_YET_RELEASED", page: "1", perPage: count.toString() });
-  const data = await fetch(apiLink + `/meta/anilist/advanced-search?${params.toString()}`)
-  return await data.json();
-}
+export const getUpcomingAnime = async (count: number, provider: string) => {
+  const anilist = getAnilist(provider);
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  const weekStart = Math.floor(monday.getTime() / 1000);
+  const weekEnd = Math.floor(sunday.getTime() / 1000);
+  return await anilist.fetchAiringSchedule(1, count, weekStart, weekEnd, true);
+};
 
-export const getExternalLink = async (episodeId: string) => {
-  const params = new URLSearchParams({ server: "gogocdn" });
-  const data = await fetch(apiLink + `/anime/gogoanime/watch/${episodeId}?${params.toString()}`)
-  return await data.json();
-}
+export const getExternalLink = async (episodeId: string, provider: string = "zoro") => {
+  const anilist = getAnilist(provider);
+  return await anilist.fetchEpisodeSources(episodeId);
+};
